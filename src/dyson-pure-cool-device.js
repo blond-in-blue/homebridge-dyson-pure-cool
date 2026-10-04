@@ -161,17 +161,25 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
     }
 
     // Updates the air purifier
-    let airPurifierService = airPurifierAccessory.getService(Service.AirPurifier);
+    // Devices without a purifier are exposed as a fan: an air purifier service requires a target state (auto/manual), which these devices do not have
+    const mainServiceType = device.info.isFanOnly ? Service.Fanv2 : Service.AirPurifier;
+    const obsoleteMainService = airPurifierAccessory.getService(device.info.isFanOnly ? Service.AirPurifier : Service.Fanv2);
+    if (obsoleteMainService) {
+        airPurifierAccessory.removeService(obsoleteMainService);
+    }
+    let airPurifierService = airPurifierAccessory.getService(mainServiceType);
     if (!airPurifierService) {
-        airPurifierService = airPurifierAccessory.addService(Service.AirPurifier);
+        airPurifierService = airPurifierAccessory.addService(mainServiceType);
     }
 
     // Updates the filter life level unit
-    airPurifierService
-        .getCharacteristic(Characteristic.FilterLifeLevel)
-        .setProps({
-            unit: "percentage"
-        });
+    if (!device.info.isFanOnly) {
+        airPurifierService
+            .getCharacteristic(Characteristic.FilterLifeLevel)
+            .setProps({
+                unit: "percentage"
+            });
+    }
 
     // Updates the rotation speed steps
     airPurifierService
@@ -637,11 +645,11 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
             }
 
             // Sets the operation mode
-            if (content['product-state']['fpwr'] && content['product-state']['fnst'] && content['product-state']['auto']) {
+            if (!device.info.isFanOnly && content['product-state']['fpwr'] && content['product-state']['fnst'] && content['product-state']['auto']) {
                 airPurifierService.updateCharacteristic(Characteristic.CurrentAirPurifierState, content['product-state']['fpwr'] === 'OFF' ? Characteristic.CurrentAirPurifierState.INACTIVE : (content['product-state']['fnst'] === 'OFF' ? Characteristic.CurrentAirPurifierState.IDLE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR));
                 airPurifierService.updateCharacteristic(Characteristic.TargetAirPurifierState, content['product-state']['auto'] === 'OFF' ? Characteristic.TargetAirPurifierState.MANUAL : Characteristic.TargetAirPurifierState.AUTO);
             }
-            if (content['product-state']['fmod'] && content['product-state']['fnst']) {
+            if (!device.info.isFanOnly && content['product-state']['fmod'] && content['product-state']['fnst']) {
                 airPurifierService.updateCharacteristic(Characteristic.CurrentAirPurifierState, content['product-state']['fmod'] === 'OFF' ? Characteristic.CurrentAirPurifierState.INACTIVE : (content['product-state']['fnst'] === 'OFF' ? Characteristic.CurrentAirPurifierState.IDLE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR));
                 airPurifierService.updateCharacteristic(Characteristic.TargetAirPurifierState, content['product-state']['fmod'] === 'AUTO' ? Characteristic.TargetAirPurifierState.AUTO : Characteristic.TargetAirPurifierState.MANUAL);
             }
@@ -652,13 +660,13 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
             }
 
             // Sets the filter life
-            if (content['product-state']['cflr'] && content['product-state']['hflr']) {
+            if (!device.info.isFanOnly && content['product-state']['cflr'] && content['product-state']['hflr']) {
                 const cflr = content['product-state']['cflr'] == "INV" ? 100 : Number.parseInt(content['product-state']['cflr']);
                 const hflr = content['product-state']['hflr'] == "INV" ? 100 : Number.parseInt(content['product-state']['hflr']);
                 airPurifierService.updateCharacteristic(Characteristic.FilterChangeIndication, Math.min(cflr, hflr) >= 10 ? Characteristic.FilterChangeIndication.FILTER_OK : Characteristic.FilterChangeIndication.CHANGE_FILTER);
                 airPurifierService.updateCharacteristic(Characteristic.FilterLifeLevel, Math.min(cflr,hflr));
             }
-            if (content['product-state']['filf']) {
+            if (!device.info.isFanOnly && content['product-state']['filf']) {
 
                 // Calculates the filter life, assuming 12 hours a day, 360 days
                 const filterLife = Number.parseInt(content['product-state']['filf']) / (360 * 12);
@@ -741,11 +749,11 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
             }
 
             // Sets the operation mode
-            if (content['product-state']['fpwr'] && content['product-state']['fnst'] && content['product-state']['auto']) {
+            if (!device.info.isFanOnly && content['product-state']['fpwr'] && content['product-state']['fnst'] && content['product-state']['auto']) {
                 airPurifierService.updateCharacteristic(Characteristic.CurrentAirPurifierState, content['product-state']['fpwr'][1] === 'OFF' ? Characteristic.CurrentAirPurifierState.INACTIVE : (content['product-state']['fnst'][1] === 'OFF' ? Characteristic.CurrentAirPurifierState.IDLE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR));
                 airPurifierService.updateCharacteristic(Characteristic.TargetAirPurifierState, content['product-state']['auto'][1] === 'OFF' ? Characteristic.TargetAirPurifierState.MANUAL : Characteristic.TargetAirPurifierState.AUTO);
             }
-            if (content['product-state']['fmod'] && content['product-state']['fnst']) {
+            if (!device.info.isFanOnly && content['product-state']['fmod'] && content['product-state']['fnst']) {
                 airPurifierService.updateCharacteristic(Characteristic.CurrentAirPurifierState, content['product-state']['fmod'][1] === 'OFF' ? Characteristic.CurrentAirPurifierState.INACTIVE : (content['product-state']['fnst'][1] === 'OFF' ? Characteristic.CurrentAirPurifierState.IDLE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR));
                 airPurifierService.updateCharacteristic(Characteristic.TargetAirPurifierState, content['product-state']['fmod'][1] === 'AUTO' ? Characteristic.TargetAirPurifierState.AUTO : Characteristic.TargetAirPurifierState.MANUAL);
             }
@@ -756,13 +764,13 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
             }
 
             // Sets the filter life
-            if (content['product-state']['cflr'] && content['product-state']['hflr']) {
+            if (!device.info.isFanOnly && content['product-state']['cflr'] && content['product-state']['hflr']) {
                 const cflr = content['product-state']['cflr'][1] == "INV" ? 100 : Number.parseInt(content['product-state']['cflr'][1]);
                 const hflr = content['product-state']['cflr'][1] == "INV" ? 100 : Number.parseInt(content['product-state']['cflr'][1]);
                 airPurifierService.updateCharacteristic(Characteristic.FilterChangeIndication, Math.min(cflr, hflr) >= 10 ? Characteristic.FilterChangeIndication.FILTER_OK : Characteristic.FilterChangeIndication.CHANGE_FILTER);
                 airPurifierService.updateCharacteristic(Characteristic.FilterLifeLevel, Math.min(cflr,hflr));
             }
-            if (content['product-state']['filf']) {
+            if (!device.info.isFanOnly && content['product-state']['filf']) {
 
                 // Calculates the filter life, assuming 12 hours a day, 360 days
                 const filterLife = Number.parseInt(content['product-state']['filf'][1]) / (360 * 12);
@@ -856,27 +864,14 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
         callback(null);
     });
 
-    // Subscribes for changes of the target state characteristic
-    airPurifierService.getCharacteristic(Characteristic.TargetAirPurifierState).on('set', function (value, callback) {
+    // Subscribes for changes of the target state characteristic (devices without a purifier do not have one)
+    if (!device.info.isFanOnly) {
+        airPurifierService.getCharacteristic(Characteristic.TargetAirPurifierState).on('set', function (value, callback) {
 
-        // Checks if AUTO mode can be enabled when activating the device
-        if (config.enableAutoModeWhenActivating || airPurifierService.getCharacteristic(Characteristic.Active).value) {
+            // Checks if AUTO mode can be enabled when activating the device
+            if (config.enableAutoModeWhenActivating || airPurifierService.getCharacteristic(Characteristic.Active).value) {
 
-            // Directly sets the target state
-            platform.log.info(serialNumber + ' - set TargetAirPurifierState to ' + value + ': ' + JSON.stringify({ auto: value === Characteristic.TargetAirPurifierState.MANUAL ? 'OFF' : 'ON', fmod: value === Characteristic.TargetAirPurifierState.MANUAL ? 'FAN' : 'AUTO' }));
-            device.mqttClient.publish(productType + '/' + serialNumber + '/command', JSON.stringify({
-                msg: 'STATE-SET',
-                time: new Date().toISOString(),
-                data: {
-                    auto: value === Characteristic.TargetAirPurifierState.MANUAL ? 'OFF' : 'ON',
-                    fmod: value === Characteristic.TargetAirPurifierState.MANUAL ? 'FAN' : 'AUTO'
-                }
-            }));
-        } else {
-
-            // Sets a timeout that can be cancelled by the Active characteristic handler
-            platform.log.info(serialNumber + ' - set TargetAirPurifierState to ' + value + ' with delay');
-            timeoutHandle = setTimeout(function () {
+                // Directly sets the target state
                 platform.log.info(serialNumber + ' - set TargetAirPurifierState to ' + value + ': ' + JSON.stringify({ auto: value === Characteristic.TargetAirPurifierState.MANUAL ? 'OFF' : 'ON', fmod: value === Characteristic.TargetAirPurifierState.MANUAL ? 'FAN' : 'AUTO' }));
                 device.mqttClient.publish(productType + '/' + serialNumber + '/command', JSON.stringify({
                     msg: 'STATE-SET',
@@ -886,11 +881,26 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
                         fmod: value === Characteristic.TargetAirPurifierState.MANUAL ? 'FAN' : 'AUTO'
                     }
                 }));
-                timeoutHandle = null;
-            }, 250);
-        }
-        callback(null);
-    });
+            } else {
+
+                // Sets a timeout that can be cancelled by the Active characteristic handler
+                platform.log.info(serialNumber + ' - set TargetAirPurifierState to ' + value + ' with delay');
+                timeoutHandle = setTimeout(function () {
+                    platform.log.info(serialNumber + ' - set TargetAirPurifierState to ' + value + ': ' + JSON.stringify({ auto: value === Characteristic.TargetAirPurifierState.MANUAL ? 'OFF' : 'ON', fmod: value === Characteristic.TargetAirPurifierState.MANUAL ? 'FAN' : 'AUTO' }));
+                    device.mqttClient.publish(productType + '/' + serialNumber + '/command', JSON.stringify({
+                        msg: 'STATE-SET',
+                        time: new Date().toISOString(),
+                        data: {
+                            auto: value === Characteristic.TargetAirPurifierState.MANUAL ? 'OFF' : 'ON',
+                            fmod: value === Characteristic.TargetAirPurifierState.MANUAL ? 'FAN' : 'AUTO'
+                        }
+                    }));
+                    timeoutHandle = null;
+                }, 250);
+            }
+            callback(null);
+        });
+    }
 
     // Subscribes for changes of the swing mode characteristic
     airPurifierService.getCharacteristic(Characteristic.SwingMode).on('set', function (value, callback) {

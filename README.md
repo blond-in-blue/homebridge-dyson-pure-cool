@@ -30,7 +30,7 @@ This project is a homebridge plugin for the Dyson air purifiers. Supported devic
 - Dyson HushJet Purifier Compact (HJ10)
 - Dyson Hot+Cool (HF1)
 
-All your devices are exposed as air purifiers in HomeKit (the HF1 as a fan), with support (also in Apple Home app) for:
+All your devices are exposed as air purifiers in HomeKit (the Hot+Cool HF1 has no purifier and no auto mode, so it is exposed as a fan), with support (also in Apple Home app) for:
 - On/off
 - Auto/manual
 - Fan speed

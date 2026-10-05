@@ -116,7 +116,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
 
     // Gets the switch accessory
     let switchAccessory = null;
-    if (config.isAutoModeEnabled || config.isNightModeEnabled || config.isContinuousMonitoringEnabled || (config.isJetFocusEnabled && device.info.hasJetFocus)) {
+    if (config.isAutoModeEnabled || config.isNightModeEnabled || config.isContinuousMonitoringEnabled || (config.isJetFocusEnabled && device.info.hasJetFocus) || (config.isOscillationEnabled && device.info.hasOscillation)) {
         if (config.isSingleAccessoryModeEnabled) {
             switchAccessory = airPurifierAccessory;
         } else {
@@ -170,6 +170,9 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
     let airPurifierService = airPurifierAccessory.getService(mainServiceType);
     if (!airPurifierService) {
         airPurifierService = airPurifierAccessory.addService(mainServiceType);
+    }
+    if (device.info.isFanOnly) {
+        airPurifierService.setPrimaryService(true);
     }
 
     // Updates the filter life level unit
@@ -349,6 +352,15 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
         jetFocusSwitchService = switchAccessory.getServiceById(Service.Switch, 'JetFocus');
         if (!jetFocusSwitchService) {
             jetFocusSwitchService = switchAccessory.addService(Service.Switch, device.info.name + ' Jet Focus', 'JetFocus');
+        }
+    }
+
+    // Updates the oscillation
+    let oscillationSwitchService = null;
+    if (switchAccessory && config.isOscillationEnabled && device.info.hasOscillation) {
+        oscillationSwitchService = switchAccessory.getServiceById(Service.Switch, 'Oscillation');
+        if (!oscillationSwitchService) {
+            oscillationSwitchService = switchAccessory.addService(Service.Switch, device.info.name + ' Oscillation', 'Oscillation');
         }
     }
 
@@ -644,6 +656,11 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
                 }
             }
 
+            // Sets the fan state of devices without a purifier
+            if (device.info.isFanOnly && content['product-state']['fpwr'] && content['product-state']['fnst']) {
+                airPurifierService.updateCharacteristic(Characteristic.CurrentFanState, content['product-state']['fpwr'] === 'OFF' ? Characteristic.CurrentFanState.INACTIVE : (content['product-state']['fnst'] === 'OFF' ? Characteristic.CurrentFanState.IDLE : Characteristic.CurrentFanState.BLOWING_AIR));
+            }
+
             // Sets the operation mode
             if (!device.info.isFanOnly && content['product-state']['fpwr'] && content['product-state']['fnst'] && content['product-state']['auto']) {
                 airPurifierService.updateCharacteristic(Characteristic.CurrentAirPurifierState, content['product-state']['fpwr'] === 'OFF' ? Characteristic.CurrentAirPurifierState.INACTIVE : (content['product-state']['fnst'] === 'OFF' ? Characteristic.CurrentAirPurifierState.IDLE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR));
@@ -657,6 +674,9 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
             // Sets the rotation status
             if (device.info.hasOscillation) {
                 airPurifierService.updateCharacteristic(Characteristic.SwingMode, content['product-state']['oson'] === 'OFF' ? Characteristic.SwingMode.SWING_DISABLED : Characteristic.SwingMode.SWING_ENABLED);
+            }
+            if (oscillationSwitchService) {
+                oscillationSwitchService.updateCharacteristic(Characteristic.On, content['product-state']['oson'] !== 'OFF');
             }
 
             // Sets the filter life
@@ -748,6 +768,11 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
                 }
             }
 
+            // Sets the fan state of devices without a purifier
+            if (device.info.isFanOnly && content['product-state']['fpwr'] && content['product-state']['fnst']) {
+                airPurifierService.updateCharacteristic(Characteristic.CurrentFanState, content['product-state']['fpwr'][1] === 'OFF' ? Characteristic.CurrentFanState.INACTIVE : (content['product-state']['fnst'][1] === 'OFF' ? Characteristic.CurrentFanState.IDLE : Characteristic.CurrentFanState.BLOWING_AIR));
+            }
+
             // Sets the operation mode
             if (!device.info.isFanOnly && content['product-state']['fpwr'] && content['product-state']['fnst'] && content['product-state']['auto']) {
                 airPurifierService.updateCharacteristic(Characteristic.CurrentAirPurifierState, content['product-state']['fpwr'][1] === 'OFF' ? Characteristic.CurrentAirPurifierState.INACTIVE : (content['product-state']['fnst'][1] === 'OFF' ? Characteristic.CurrentAirPurifierState.IDLE : Characteristic.CurrentAirPurifierState.PURIFYING_AIR));
@@ -761,6 +786,9 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
             // Sets the rotation status
             if (device.info.hasOscillation) {
                 airPurifierService.updateCharacteristic(Characteristic.SwingMode, content['product-state']['oson'][1] === 'OFF' ? Characteristic.SwingMode.SWING_DISABLED : Characteristic.SwingMode.SWING_ENABLED);
+            }
+            if (oscillationSwitchService) {
+                oscillationSwitchService.updateCharacteristic(Characteristic.On, content['product-state']['oson'][1] !== 'OFF');
             }
 
             // Sets the filter life
@@ -912,6 +940,19 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
         }));
         callback(null);
     });
+
+    // Subscribes for changes of the oscillation
+    if (oscillationSwitchService) {
+        oscillationSwitchService.getCharacteristic(Characteristic.On).on('set', function (value, callback) {
+            platform.log.info(serialNumber + ' - set Oscillation to ' + value + ': ' + JSON.stringify({ oson: value ? 'ON' : 'OFF' }));
+            device.mqttClient.publish(productType + '/' + serialNumber + '/command', JSON.stringify({
+                msg: 'STATE-SET',
+                time: new Date().toISOString(),
+                data: { oson: value ? 'ON' : 'OFF' }
+            }));
+            callback(null);
+        });
+    }
 
     // Subscribes for changes of the rotation speed characteristic
     airPurifierService.getCharacteristic(Characteristic.RotationSpeed).on('set', function (value, callback) {

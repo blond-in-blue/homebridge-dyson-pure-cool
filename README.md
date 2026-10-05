@@ -127,6 +127,7 @@ This method seems to work for most people, see [#196](https://github.com/lukasro
                     "enableOscillationWhenActivating": false,
                     "enableNightModeWhenActivating": false,
                     "isNightModeEnabled": false,
+                    "isOscillationEnabled": false,
                     "isJetFocusEnabled": false,
                     "isContinuousMonitoringEnabled": false,
                     "isTemperatureSensorEnabled": false,
@@ -168,6 +169,8 @@ This method seems to work for most people, see [#196](https://github.com/lukasro
 **isNightModeEnabled**: If set to `true`, a switch is exposed for the night mode. Defaults to `false`.
 
 **isAutoModeEnabled**: If set to `true`, a switch is exposed for the auto mode. Defaults to `false`.
+
+**isOscillationEnabled**: If set to `true`, a switch is exposed for the oscillation. Only for supported devices. Defaults to `false`.
 
 **isJetFocusEnabled**: If set to `true`, a switch is exposed for the jet focus. Only for supported devices. Defaults to `false`.
 

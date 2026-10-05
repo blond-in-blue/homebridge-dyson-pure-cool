@@ -117,7 +117,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
     // Gets the switch accessory
     let switchAccessory = null;
     if (config.isAutoModeEnabled || config.isNightModeEnabled || config.isContinuousMonitoringEnabled || (config.isJetFocusEnabled && device.info.hasJetFocus) || (config.isOscillationEnabled && device.info.hasOscillation)) {
-        if (config.isSingleAccessoryModeEnabled) {
+        if (config.isSingleAccessoryModeEnabled || device.info.isFanOnly) {
             switchAccessory = airPurifierAccessory;
         } else {
             switchAccessory = unusedDeviceAccessories.find(function(a) { return a.context.kind === 'SwitchAccessory'; });
@@ -372,6 +372,22 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
             continuousMonitoringSwitchService = switchAccessory.addService(Service.Switch, device.info.name + ' Continuous Monitoring', 'ContinuousMonitoring');
         }
     }
+
+    // HF1-patch (homelab): names the accessories and services after the device. ConfiguredName is seeded once, so that the Home app
+    // labels services added after pairing and keeps a rename made in the app
+    if (temperatureAccessory && temperatureAccessory !== airPurifierAccessory && device.info.hasHeating) {
+        temperatureAccessory.displayName = device.info.name + ' Heater';
+        temperatureAccessory.getService(Service.AccessoryInformation).setCharacteristic(Characteristic.Name, device.info.name + ' Heater');
+    }
+    [[airPurifierService, device.info.name], [device.info.hasHeating ? temperatureService : null, device.info.name + ' Heater'], [nightModeSwitchService, device.info.name + ' Night Mode'], [oscillationSwitchService, device.info.name + ' Oscillation']].forEach(function (entry) {
+        if (entry[0]) {
+            entry[0].setCharacteristic(Characteristic.Name, entry[1]);
+            entry[0].addOptionalCharacteristic(Characteristic.ConfiguredName);
+            if (!entry[0].getCharacteristic(Characteristic.ConfiguredName).value) {
+                entry[0].setCharacteristic(Characteristic.ConfiguredName, entry[1]);
+            }
+        }
+    });
 
     // Initializes the MQTT client for local communication with the device
     device.mqttClient = mqtt.connect('mqtt://' + config.ipAddress, {
@@ -676,7 +692,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
                 airPurifierService.updateCharacteristic(Characteristic.SwingMode, content['product-state']['oson'] === 'OFF' ? Characteristic.SwingMode.SWING_DISABLED : Characteristic.SwingMode.SWING_ENABLED);
             }
             if (oscillationSwitchService) {
-                oscillationSwitchService.updateCharacteristic(Characteristic.On, content['product-state']['oson'] !== 'OFF');
+                oscillationSwitchService.updateCharacteristic(Characteristic.On, content['product-state']['oson'] !== 'OFF' && !(device.info.isFanOnly && content['product-state']['fpwr'] && content['product-state']['fpwr'] === 'OFF'));
             }
 
             // Sets the filter life
@@ -701,7 +717,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
 
             // Sets the state of the night mode switch
             if (nightModeSwitchService) {
-                nightModeSwitchService.updateCharacteristic(Characteristic.On, content['product-state']['nmod'] !== 'OFF');
+                nightModeSwitchService.updateCharacteristic(Characteristic.On, content['product-state']['nmod'] !== 'OFF' && !(device.info.isFanOnly && content['product-state']['fpwr'] && content['product-state']['fpwr'] === 'OFF'));
             }
 
             // Sets the state of the auto mode switch
@@ -788,7 +804,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
                 airPurifierService.updateCharacteristic(Characteristic.SwingMode, content['product-state']['oson'][1] === 'OFF' ? Characteristic.SwingMode.SWING_DISABLED : Characteristic.SwingMode.SWING_ENABLED);
             }
             if (oscillationSwitchService) {
-                oscillationSwitchService.updateCharacteristic(Characteristic.On, content['product-state']['oson'][1] !== 'OFF');
+                oscillationSwitchService.updateCharacteristic(Characteristic.On, content['product-state']['oson'][1] !== 'OFF' && !(device.info.isFanOnly && content['product-state']['fpwr'] && content['product-state']['fpwr'][1] === 'OFF'));
             }
 
             // Sets the filter life
@@ -813,7 +829,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
 
             // Sets the state of the night mode switch
             if (nightModeSwitchService) {
-                nightModeSwitchService.updateCharacteristic(Characteristic.On, content['product-state']['nmod'][1] !== 'OFF');
+                nightModeSwitchService.updateCharacteristic(Characteristic.On, content['product-state']['nmod'][1] !== 'OFF' && !(device.info.isFanOnly && content['product-state']['fpwr'] && content['product-state']['fpwr'][1] === 'OFF'));
             }
 
             // Sets the state of the auto mode switch
@@ -944,11 +960,16 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
     // Subscribes for changes of the oscillation
     if (oscillationSwitchService) {
         oscillationSwitchService.getCharacteristic(Characteristic.On).on('set', function (value, callback) {
-            platform.log.info(serialNumber + ' - set Oscillation to ' + value + ': ' + JSON.stringify({ oson: value ? 'ON' : 'OFF' }));
+            const commandData = { oson: value ? 'ON' : 'OFF' };
+            if (value && device.info.isFanOnly && !airPurifierService.getCharacteristic(Characteristic.Active).value) {
+                commandData.fpwr = 'ON';
+                commandData.fmod = config.enableAutoModeWhenActivating ? 'AUTO' : 'FAN';
+            }
+            platform.log.info(serialNumber + ' - set Oscillation to ' + value + ': ' + JSON.stringify(commandData));
             device.mqttClient.publish(productType + '/' + serialNumber + '/command', JSON.stringify({
                 msg: 'STATE-SET',
                 time: new Date().toISOString(),
-                data: { oson: value ? 'ON' : 'OFF' }
+                data: commandData
             }));
             callback(null);
         });

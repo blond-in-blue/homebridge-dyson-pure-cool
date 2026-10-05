@@ -159,6 +159,7 @@ const knownProducts = {
     hasJetFocus: false,
     hasOscillation: false,
   },
+  // HF1-patch (homelab): see configs/homebridge in the homelab repository
   '635': {
     model: 'Dyson Hot+Cool',
     hardwareRevision: 'HF1',
